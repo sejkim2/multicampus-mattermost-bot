@@ -50,11 +50,7 @@ async function fetchMenu(dateString) {
 }
 
 function buildMealText(meal) {
-  const lines = [
-    `### ${meal.courseName ?? "메뉴"}`,
-    `**${meal.setName ?? meal.name ?? ""}**`,
-    "",
-  ];
+  const lines = [];
 
   if (Array.isArray(meal.nutrition)) {
     for (const item of meal.nutrition) {
@@ -66,72 +62,20 @@ function buildMealText(meal) {
   return lines.join("\n");
 }
 
-function buildBlocks(data) {
-  const weekday = getKoreanWeekday(data.date);
-
-  const blocks = [
-    {
-      type: "text",
-      text: `## 멀티캠퍼스 오늘의 점심\n**${data.date} (${weekday}) · ${data.restaurant ?? "멀티캠퍼스"} · ${data.mealTime ?? "점심"}**`,
-    },
-    { type: "divider" },
-  ];
-
-  for (let i = 0; i < data.meals.length; i++) {
-    const meal = data.meals[i];
-
-    const columns = [
-      {
-        type: "column",
-        width: "stretch",
-        items: [
-          {
-            type: "text",
-            text: buildMealText(meal),
-          },
-        ],
-      },
-    ];
-
-    if (meal.photoUrl) {
-      columns.push({
-        type: "column",
-        width: "auto",
-        items: [
-          {
-            type: "image",
-            url: meal.photoUrl,
-            alt_text: meal.setName ?? meal.name ?? "메뉴 이미지",
-            title: meal.setName ?? meal.name ?? "메뉴 이미지",
-            size: "small",
-            max_width: 180,
-            max_height: 140,
-            horizontal_alignment: "right",
-          },
-        ],
-      });
-    }
-
-    blocks.push({
-      type: "column_set",
-      gap: "medium",
-      columns,
-    });
-
-    if (i < data.meals.length - 1) {
-      blocks.push({ type: "divider" });
-    }
-  }
-
-  return blocks;
-}
-
-function buildFallbackText(data) {
-  const weekday = getKoreanWeekday(data.date);
-  return `멀티캠퍼스 오늘의 점심 - ${data.date} (${weekday})`;
+function buildAttachments(data) {
+  return data.meals.map((meal) => ({
+    title: meal.courseName ?? "메뉴",
+    text:
+      `**${meal.setName ?? meal.name ?? ""}**\n\n` +
+      buildMealText(meal),
+    thumb_url: meal.photoUrl || undefined,
+    fallback: `${meal.courseName ?? "메뉴"} - ${meal.setName ?? meal.name ?? ""}`,
+  }));
 }
 
 async function sendToMattermost(data) {
+  const weekday = getKoreanWeekday(data.date);
+
   const response = await fetch(WEBHOOK_URL, {
     method: "POST",
     headers: {
@@ -139,10 +83,8 @@ async function sendToMattermost(data) {
     },
     body: JSON.stringify({
       username: "멀티캠퍼스 점심봇",
-      text: buildFallbackText(data),
-      props: {
-        mm_blocks: buildBlocks(data),
-      },
+      text: `## 멀티캠퍼스 오늘의 점심\n**${data.date} (${weekday}) · ${data.restaurant ?? "멀티캠퍼스"} · ${data.mealTime ?? "점심"}**`,
+      attachments: buildAttachments(data),
     }),
   });
 
