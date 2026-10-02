@@ -49,48 +49,89 @@ async function fetchMenu(dateString) {
   return response.json();
 }
 
-function formatMenu(data) {
-  if (!data?.meals?.length) {
-    return null;
-  }
-
-  const weekday = getKoreanWeekday(data.date);
+function buildMealText(meal) {
   const lines = [
-    `## 멀티캠퍼스 오늘의 점심`,
-    `**${data.date} (${weekday}) · ${data.restaurant ?? "멀티캠퍼스"} · ${data.mealTime ?? "점심"}**`,
+    `### ${meal.courseName ?? "메뉴"}`,
+    `**${meal.setName ?? meal.name ?? ""}**`,
     "",
   ];
 
-  for (const meal of data.meals) {
-    lines.push(`### ${meal.courseName ?? "메뉴"}`);
-
-    if (meal.setName) {
-      lines.push(`**${meal.setName}**`);
-    } else if (meal.name) {
-      lines.push(`**${meal.name}**`);
+  if (Array.isArray(meal.nutrition)) {
+    for (const item of meal.nutrition) {
+      const marker = item.isMain ? "★" : "•";
+      lines.push(`${marker} ${item.name}`);
     }
-
-    if (Array.isArray(meal.nutrition) && meal.nutrition.length > 0) {
-      for (const item of meal.nutrition) {
-        const marker = item.isMain ? "★" : "-";
-        lines.push(`${marker} ${item.name}`);
-      }
-    }
-
-    if (meal.photoUrl) {
-      lines.push("");
-      lines.push(`![${meal.setName ?? meal.name ?? "메뉴 이미지"}](${meal.photoUrl})`);
-    }
-
-    lines.push("");
-    lines.push("---");
-    lines.push("");
   }
 
   return lines.join("\n");
 }
 
-async function sendToMattermost(text) {
+function buildBlocks(data) {
+  const weekday = getKoreanWeekday(data.date);
+
+  const blocks = [
+    {
+      type: "text",
+      text: `## 멀티캠퍼스 오늘의 점심\n**${data.date} (${weekday}) · ${data.restaurant ?? "멀티캠퍼스"} · ${data.mealTime ?? "점심"}**`,
+    },
+    { type: "divider" },
+  ];
+
+  for (let i = 0; i < data.meals.length; i++) {
+    const meal = data.meals[i];
+
+    const columns = [
+      {
+        type: "column",
+        width: "stretch",
+        items: [
+          {
+            type: "text",
+            text: buildMealText(meal),
+          },
+        ],
+      },
+    ];
+
+    if (meal.photoUrl) {
+      columns.push({
+        type: "column",
+        width: "auto",
+        items: [
+          {
+            type: "image",
+            url: meal.photoUrl,
+            alt_text: meal.setName ?? meal.name ?? "메뉴 이미지",
+            title: meal.setName ?? meal.name ?? "메뉴 이미지",
+            size: "small",
+            max_width: 180,
+            max_height: 140,
+            horizontal_alignment: "right",
+          },
+        ],
+      });
+    }
+
+    blocks.push({
+      type: "column_set",
+      gap: "medium",
+      columns,
+    });
+
+    if (i < data.meals.length - 1) {
+      blocks.push({ type: "divider" });
+    }
+  }
+
+  return blocks;
+}
+
+function buildFallbackText(data) {
+  const weekday = getKoreanWeekday(data.date);
+  return `멀티캠퍼스 오늘의 점심 - ${data.date} (${weekday})`;
+}
+
+async function sendToMattermost(data) {
   const response = await fetch(WEBHOOK_URL, {
     method: "POST",
     headers: {
@@ -98,7 +139,10 @@ async function sendToMattermost(text) {
     },
     body: JSON.stringify({
       username: "멀티캠퍼스 점심봇",
-      text,
+      text: buildFallbackText(data),
+      props: {
+        mm_blocks: buildBlocks(data),
+      },
     }),
   });
 
@@ -116,18 +160,12 @@ async function main() {
 
   const data = await fetchMenu(date);
 
-  if (!data) {
+  if (!data?.meals?.length) {
+    console.log("Menu data is empty or missing. Skipping Mattermost post.");
     return;
   }
 
-  const message = formatMenu(data);
-
-  if (!message) {
-    console.log("Menu data is empty. Skipping Mattermost post.");
-    return;
-  }
-
-  await sendToMattermost(message);
+  await sendToMattermost(data);
   console.log("Lunch menu sent to Mattermost.");
 }
 
