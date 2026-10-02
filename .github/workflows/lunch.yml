@@ -1,0 +1,28 @@
+name: Send Multicampus Lunch Menu
+
+on:
+  schedule:
+    - cron: "0 10 * * 1-5"
+      timezone: "Asia/Seoul"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send-lunch-menu:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Send lunch menu to Mattermost
+        env:
+          MM_WEBHOOK_URL: ${{ secrets.MM_WEBHOOK_URL }}
+        run: node bot.js
