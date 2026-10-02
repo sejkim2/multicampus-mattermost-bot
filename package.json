@@ -1,0 +1,12 @@
+{
+  "name": "multicampus-mattermost-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Send Multicampus lunch menu to Mattermost using GitHub Actions",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
