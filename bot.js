@@ -49,32 +49,100 @@ async function fetchMenu(dateString) {
   return response.json();
 }
 
-function buildMealText(meal) {
-  const lines = [];
-
-  if (Array.isArray(meal.nutrition)) {
-    for (const item of meal.nutrition) {
-      const marker = item.isMain ? "★" : "•";
-      lines.push(`${marker} ${item.name}`);
-    }
-  }
-
-  return lines.join("\n");
+function escapeCell(value = "") {
+  return String(value)
+    .replaceAll("|", "\\|")
+    .replaceAll("\n", " ");
 }
 
-function buildAttachments(data) {
-  return data.meals.map((meal) => ({
-    title: meal.courseName ?? "메뉴",
-    text:
-      `**${meal.setName ?? meal.name ?? ""}**\n\n` +
-      buildMealText(meal),
-    thumb_url: meal.photoUrl || undefined,
-    fallback: `${meal.courseName ?? "메뉴"} - ${meal.setName ?? meal.name ?? ""}`,
-  }));
+function courseLabel(meal) {
+  const raw = meal.courseName ?? "메뉴";
+  const parts = raw.split(":");
+  return escapeCell(parts.length > 1 ? parts.slice(1).join(":") : raw);
+}
+
+function itemLabel(item) {
+  const kcal =
+    typeof item.calorie === "number" ? ` (${Math.round(item.calorie)}kcal)` : "";
+  return `${escapeCell(item.name)}${kcal}`;
+}
+
+function nutritionSummary(meal) {
+  const items = Array.isArray(meal.nutrition) ? meal.nutrition : [];
+
+  const sum = (key) =>
+    Math.round(
+      items.reduce(
+        (total, item) =>
+          total + (typeof item[key] === "number" ? item[key] : 0),
+        0
+      )
+    );
+
+  return [
+    `칼로리 ${sum("calorie")}kcal`,
+    `단백질 ${sum("protein")}g`,
+    `지방 ${sum("fat")}g`,
+    `탄수화물 ${sum("carbohydrate")}g`,
+  ].join(" / ");
+}
+
+function buildMenuTable(data) {
+  const meals = data.meals.slice(0, 2);
+
+  if (meals.length === 0) {
+    return "";
+  }
+
+  if (meals.length === 1) {
+    meals.push({
+      courseName: "",
+      photoUrl: "",
+      nutrition: [],
+    });
+  }
+
+  const [left, right] = meals;
+
+  const rows = [
+    `| **${courseLabel(left)}** | **${courseLabel(right)}** |`,
+    "| :---: | :---: |",
+    `| ${left.photoUrl ? `![${courseLabel(left)}](${left.photoUrl} =220)` : ""} | ${right.photoUrl ? `![${courseLabel(right)}](${right.photoUrl} =220)` : ""} |`,
+  ];
+
+  const leftItems = Array.isArray(left.nutrition) ? left.nutrition : [];
+  const rightItems = Array.isArray(right.nutrition) ? right.nutrition : [];
+  const maxItems = Math.max(leftItems.length, rightItems.length);
+
+  for (let i = 0; i < maxItems; i++) {
+    const l = leftItems[i];
+    const r = rightItems[i];
+
+    let leftText = l ? itemLabel(l) : "";
+    let rightText = r ? itemLabel(r) : "";
+
+    if (l?.isMain) leftText = `**${leftText}**`;
+    if (r?.isMain) rightText = `**${rightText}**`;
+
+    rows.push(`| ${leftText} | ${rightText} |`);
+  }
+
+  rows.push(
+    `| **영양 정보:** ${escapeCell(nutritionSummary(left))} | **영양 정보:** ${escapeCell(nutritionSummary(right))} |`
+  );
+
+  return rows.join("\n");
 }
 
 async function sendToMattermost(data) {
   const weekday = getKoreanWeekday(data.date);
+
+  const message = [
+    `## 멀티캠퍼스 오늘의 점심`,
+    `**${data.date} (${weekday}) · ${data.restaurant ?? "멀티캠퍼스"} · ${data.mealTime ?? "점심"}**`,
+    "",
+    buildMenuTable(data),
+  ].join("\n");
 
   const response = await fetch(WEBHOOK_URL, {
     method: "POST",
@@ -83,8 +151,7 @@ async function sendToMattermost(data) {
     },
     body: JSON.stringify({
       username: "멀티캠퍼스 점심봇",
-      text: `## 멀티캠퍼스 오늘의 점심\n**${data.date} (${weekday}) · ${data.restaurant ?? "멀티캠퍼스"} · ${data.mealTime ?? "점심"}**`,
-      attachments: buildAttachments(data),
+      text: message,
     }),
   });
 
