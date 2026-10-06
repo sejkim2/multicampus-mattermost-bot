@@ -24,15 +24,21 @@ test("10층 미운영일은 사유를 표시한다", () => {
   assert.doesNotMatch(format10F(week[3]), /도시락|샌드위치|샐러드/);
 });
 
-test("20층 표와 사진을 유지하며 10층을 추가한다", () => {
+test("층별 색상 카드에서 20층 사진과 가운데 정렬 표, 10층 메뉴를 유지한다", () => {
   const payload = buildPayload("2026-10-06", data20f, today10f, { test: true });
   assert.match(payload.text, /\[테스트\]/);
-  assert.match(payload.text, /20층 삼성웰스토리/);
-  assert.match(payload.text, /menu\.png/);
-  assert.match(payload.text, /칼로리 500kcal/);
-  assert.match(payload.text, /10층 공존식단/);
-  assert.match(payload.text, /마늘닭볶음탕/);
-  assert.doesNotMatch(payload.text, /칼로리 0kcal/);
+  assert.equal(payload.attachments.length, 2);
+  const [floor20, floor10] = payload.attachments;
+  assert.equal(floor20.color, "#3B82F6");
+  assert.equal(floor10.color, "#22C55E");
+  assert.match(floor20.title, /20층 삼성웰스토리/);
+  assert.match(floor20.text, /menu\.png/);
+  assert.match(floor20.text, /\| :---: \| :---: \|/);
+  assert.match(floor20.text, /칼로리 500kcal/);
+  assert.match(floor10.title, /10층 공존식단/);
+  assert.match(floor10.text, /마늘닭볶음탕/);
+  assert.ok(floor20.fallback && floor10.fallback);
+  assert.doesNotMatch(floor20.text, /칼로리 0kcal/);
 });
 
 test("20층 공개 JSON이 없더라도 10층 식단을 전송한다", async () => {
@@ -47,7 +53,8 @@ test("20층 공개 JSON이 없더라도 10층 식단을 전송한다", async () 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].options.method, "POST");
   assert.deepEqual(JSON.parse(calls[0].options.body), payload);
-  assert.match(payload.text, /마늘닭볶음탕/);
+  assert.match(payload.attachments[0].text, /메뉴 정보가 아직 없습니다/);
+  assert.match(payload.attachments[1].text, /마늘닭볶음탕/);
 });
 
 test("20층 조회의 영구 오류가 10층 발송을 막지 않는다", async () => {
@@ -67,21 +74,22 @@ test("20층이 다른 날짜의 식단을 반환하면 표시하지 않는다", 
     fetchImpl: async (url) => url.includes("raw.githubusercontent.com")
       ? Response.json({ ...data20f, date: "2026-10-05" }) : new Response("ok"),
   });
-  assert.doesNotMatch(payload.text, /20층 테스트 메뉴/);
-  assert.match(payload.text, /마늘닭볶음탕/);
+  assert.doesNotMatch(payload.attachments[0].text, /20층 테스트 메뉴/);
+  assert.match(payload.attachments[1].text, /마늘닭볶음탕/);
 });
 
 test("20층 메뉴가 있으면 10층 행사 미운영 사유를 함께 전송한다", async () => {
-  let text;
+  let payload;
   await main({ date: "2026-10-08", webhookUrl: "https://example.test/hook",
     fetchImpl: async (url, options) => {
       if (url.includes("raw.githubusercontent.com")) return Response.json({ ...data20f, date: "2026-10-08" });
-      text = JSON.parse(options.body).text;
+      payload = JSON.parse(options.body);
       return new Response("ok");
     },
   });
-  assert.match(text, /20층 테스트 메뉴/);
-  assert.match(text, /MEET UP/);
+  assert.match(payload.attachments[0].text, /20층 테스트 메뉴/);
+  assert.match(payload.attachments[1].text, /MEET UP/);
+  assert.match(payload.attachments[1].fallback, /미운영.*MEET UP/);
 });
 
 test("두 층에 메뉴가 없거나 미운영이면 발송하지 않는다", async () => {
@@ -97,7 +105,7 @@ test("10층 미리보기에는 웹훅과 외부 요청이 필요 없다", async 
   const payload = await main({ date: "2026-10-06", only10f: true, dryRun: true, webhookUrl: "",
     fetchImpl: async () => { throw new Error("외부 요청을 호출하면 안 됩니다."); },
   });
-  assert.match(payload.text, /참치카나페샐러드/);
+  assert.match(payload.attachments[1].text, /참치카나페샐러드/);
 });
 
 test("웹훅 오류를 로그에 URL이나 서버 응답 본문 없이 전달한다", async () => {

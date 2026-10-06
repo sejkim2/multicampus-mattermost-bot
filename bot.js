@@ -188,7 +188,7 @@ function format10F(data) {
 
   const labels = { 도시락: "🍱 도시락", 브런치: "🥪 샌드위치", 샐러드: "🥗 샐러드" };
   const lines = data.meals.map((meal) =>
-    `**${labels[meal.courseName] ?? escapeCell(meal.courseName)}**\n${meal.items.map(escapeCell).join(" · ")}`
+    `**${labels[meal.courseName] ?? escapeCell(meal.courseName)}**\n${meal.items.map((item, index) => index === 0 ? `**${escapeCell(item)}**` : escapeCell(item)).join(" · ")}`
   );
   if (data.notice) lines.push(`_${escapeCell(data.notice)}_`);
   return lines.join("\n\n");
@@ -196,20 +196,32 @@ function format10F(data) {
 
 function buildPayload(date, data20f, data10f, { test = false } = {}) {
   const weekday = getKoreanWeekday(date);
-
   const message = [
     `## ${test ? "[테스트] " : ""}멀티캠퍼스 오늘의 점심`,
     `**${date} (${weekday})**`,
-    "",
-    "### 🏢 20층 삼성웰스토리",
-    data20f?.meals?.length ? buildMenuTable(data20f) : "_오늘 메뉴 정보가 아직 없습니다._",
-    "",
-    "### 🏢 10층 공존식단",
-    format10F(data10f),
     ...(test ? ["", "_식단 표시 확인을 위한 테스트 메시지입니다._"] : []),
   ].join("\n");
 
-  return { username: "멀티캠퍼스 점심봇", text: message };
+  return {
+    username: "멀티캠퍼스 점심봇",
+    text: message,
+    attachments: [
+      {
+        fallback: `${date} 20층 삼성웰스토리 식단`,
+        color: "#3B82F6",
+        title: "🏢 20층 삼성웰스토리",
+        text: data20f?.meals?.length ? buildMenuTable(data20f) : "_오늘 메뉴 정보가 아직 없습니다._",
+      },
+      {
+        fallback: data10f?.status === "closed"
+          ? `${date} 10층 공존식단 미운영: ${data10f.closureReason}`
+          : `${date} 10층 공존식단 식단`,
+        color: "#22C55E",
+        title: "🏢 10층 공존식단",
+        text: format10F(data10f),
+      },
+    ],
+  };
 }
 
 async function sendToMattermost(payload, webhookUrl, fetchImpl = fetch) {
