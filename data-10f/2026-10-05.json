@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-05",
+  "dayOfWeek": "월요일",
+  "restaurant": "멀티캠퍼스 10층",
+  "mealTime": "점심",
+  "status": "closed",
+  "closureReason": "개천절 대체공휴일",
+  "notice": "공존 메뉴는 한정 수량으로 제공되어 조기 품절될 수 있으니 이용 시 참고 부탁드립니다.",
+  "meals": [],
+  "source": {
+    "type": "manual",
+    "fileName": "10f-2026-10-05.json",
+    "sha256": "84206a988738900cc1af88d4368e9178a84b1f90532d850e6c49782f4d7c8303"
+  },
+  "updatedAt": "2026-10-06T01:49:42.746Z"
+}

@@ -1,2 +1,5 @@
 node_modules/
 .env
+.env.*
+!.env_example
+data-10f/*.tmp

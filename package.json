@@ -4,9 +4,11 @@
   "private": true,
   "description": "Send Multicampus lunch menu to Mattermost using GitHub Actions",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "fetch-10f": "node scripts/fetch-10f.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12.0"
   }
 }

@@ -2,16 +2,33 @@ name: Send Multicampus Lunch Menu
 
 on:
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "0 9 * * 1-5"
       timezone: "Asia/Seoul"
   workflow_dispatch:
+    inputs:
+      date:
+        description: "확인할 날짜 (YYYY-MM-DD, 비워두면 한국시간 오늘)"
+        type: string
+      dry_run:
+        description: "메시지 미리보기만 실행"
+        type: boolean
+        default: true
+      test_message:
+        description: "메시지에 테스트 표시"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: lunch-menu-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   send-lunch-menu:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
@@ -25,4 +42,12 @@ jobs:
       - name: Send lunch menu to Mattermost
         env:
           MM_WEBHOOK_URL: ${{ secrets.MM_WEBHOOK_URL }}
-        run: node bot.js
+          MENU_DATE: ${{ inputs.date }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TEST_MESSAGE: ${{ inputs.test_message }}
+        run: |
+          args=()
+          if [ -n "$MENU_DATE" ]; then args+=(--date "$MENU_DATE"); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          if [ "$TEST_MESSAGE" = "true" ]; then args+=(--test); fi
+          node bot.js "${args[@]}"

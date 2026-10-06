@@ -1,0 +1,84 @@
+name: Collect 10F Weekly Menu
+
+on:
+  schedule:
+    - cron: "0 6 * * 1-5"
+      timezone: "Asia/Seoul"
+  workflow_dispatch:
+    inputs:
+      image_path:
+        description: "저장소에 넣은 식단 이미지 경로 (비워두면 Mattermost에서 수집)"
+        type: string
+      reference_date:
+        description: "연도 해석의 기준 날짜 (YYYY-MM-DD, 기본값은 한국시간 오늘)"
+        type: string
+      force:
+        description: "같은 이미지도 다시 파싱"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect-10f-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
+      MM_LOGIN_JSON: ${{ secrets.MM_LOGIN_JSON }}
+      MM_ACCESS_TOKEN: ${{ secrets.MM_ACCESS_TOKEN }}
+      MM_MENU_CHANNEL_ID: ${{ secrets.MM_MENU_CHANNEL_ID }}
+      MM_MENU_TEAM_NAME: ${{ vars.MM_MENU_TEAM_NAME }}
+      MM_MENU_CHANNEL_NAME: ${{ vars.MM_MENU_CHANNEL_NAME }}
+      MM_MENU_MAX_PAGES: ${{ vars.MM_MENU_MAX_PAGES }}
+      MM_MENU_MAX_POST_AGE_DAYS: ${{ vars.MM_MENU_MAX_POST_AGE_DAYS }}
+      MM_ALERT_WEBHOOK_URL: ${{ secrets.MM_ALERT_WEBHOOK_URL }}
+      IMAGE_PATH: ${{ inputs.image_path }}
+      REFERENCE_DATE: ${{ inputs.reference_date }}
+      FORCE_PARSE: ${{ inputs.force }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 수집 및 파싱
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY 설정 전입니다. 저장된 수동 식단을 사용합니다."
+            exit 0
+          fi
+          if [ -z "$IMAGE_PATH" ]; then
+            if [ -z "$MM_LOGIN_JSON" ] && [ -z "$MM_ACCESS_TOKEN" ]; then
+              echo "자동 수집에는 MM_LOGIN_JSON 또는 MM_ACCESS_TOKEN이 필요합니다."
+              exit 0
+            fi
+            if [ -z "$MM_MENU_CHANNEL_ID" ] && { [ -z "$MM_MENU_TEAM_NAME" ] || [ -z "$MM_MENU_CHANNEL_NAME" ]; }; then
+              echo "식단 게시 채널 설정 전입니다. MM_MENU_CHANNEL_ID 또는 팀/채널 이름을 설정하세요."
+              exit 0
+            fi
+          fi
+          args=()
+          if [ -n "$IMAGE_PATH" ]; then args+=(--image "$IMAGE_PATH"); fi
+          if [ -n "$REFERENCE_DATE" ]; then args+=(--reference-date "$REFERENCE_DATE"); fi
+          if [ "$FORCE_PARSE" = "true" ]; then args+=(--force); fi
+          node scripts/fetch-10f.js "${args[@]}"
+      - name: 식단 저장
+        run: |
+          git add data-10f/
+          if git diff --staged --quiet; then
+            echo "식단 변경사항 없음"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update 10F weekly menu"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"

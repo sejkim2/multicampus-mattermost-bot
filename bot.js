@@ -1,9 +1,6 @@
-const WEBHOOK_URL = process.env.MM_WEBHOOK_URL;
-
-if (!WEBHOOK_URL) {
-  console.error("MM_WEBHOOK_URL secret is not configured.");
-  process.exit(1);
-}
+const { parseArgs } = require("node:util");
+const { read10F, validateDate } = require("./lib/menu-10f");
+require("./lib/env").loadLocalEnv();
 
 const SEOUL_TZ = "Asia/Seoul";
 
@@ -58,15 +55,16 @@ async function retry(fn, label, maxAttempts = 3) {
   throw lastError;
 }
 
-async function fetchMenu(dateString) {
+async function fetchMenu(dateString, fetchImpl = fetch) {
   const url =
     `https://raw.githubusercontent.com/C4T4767/baptimessafy/main/data/${dateString}.json`;
 
-  const response = await fetch(url, {
+  const response = await fetchImpl(url, {
     headers: {
       "User-Agent": "multicampus-mattermost-bot",
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(15000),
   });
 
   if (response.status === 404) {
@@ -83,7 +81,13 @@ async function fetchMenu(dateString) {
     throw error;
   }
 
-  return response.json();
+  const data = await response.json();
+  if (data.date !== dateString || !Array.isArray(data.meals)) {
+    const error = new Error("20F menu JSON has an invalid date or meals field.");
+    error.retryable = false;
+    throw error;
+  }
+  return data;
 }
 
 function escapeCell(value = "") {
@@ -106,6 +110,10 @@ function itemLabel(item) {
 
 function nutritionSummary(meal) {
   const items = Array.isArray(meal.nutrition) ? meal.nutrition : [];
+
+  if (!items.some((item) => typeof item.calorie === "number")) {
+    return "정보 없음";
+  }
 
   const sum = (key) =>
     Math.round(
@@ -171,62 +179,112 @@ function buildMenuTable(data) {
   return rows.join("\n");
 }
 
-async function sendToMattermost(data) {
-  const weekday = getKoreanWeekday(data.date);
+function format10F(data) {
+  if (!data) return "_오늘 메뉴 정보가 아직 없습니다._";
+  if (data.status === "closed") {
+    return `**미운영** · ${escapeCell(data.closureReason)}`;
+  }
+  if (!data.meals.length) return "_오늘 메뉴 정보가 아직 없습니다._";
+
+  const labels = { 도시락: "🍱 도시락", 브런치: "🥪 샌드위치", 샐러드: "🥗 샐러드" };
+  const lines = data.meals.map((meal) =>
+    `**${labels[meal.courseName] ?? escapeCell(meal.courseName)}**\n${meal.items.map(escapeCell).join(" · ")}`
+  );
+  if (data.notice) lines.push(`_${escapeCell(data.notice)}_`);
+  return lines.join("\n\n");
+}
+
+function buildPayload(date, data20f, data10f, { test = false } = {}) {
+  const weekday = getKoreanWeekday(date);
 
   const message = [
-    `## 멀티캠퍼스 오늘의 점심`,
-    `**${data.date} (${weekday}) · ${data.restaurant ?? "멀티캠퍼스"} · ${data.mealTime ?? "점심"}**`,
+    `## ${test ? "[테스트] " : ""}멀티캠퍼스 오늘의 점심`,
+    `**${date} (${weekday})**`,
     "",
-    buildMenuTable(data),
+    "### 🏢 20층 삼성웰스토리",
+    data20f?.meals?.length ? buildMenuTable(data20f) : "_오늘 메뉴 정보가 아직 없습니다._",
+    "",
+    "### 🏢 10층 공존식단",
+    format10F(data10f),
+    ...(test ? ["", "_식단 표시 확인을 위한 테스트 메시지입니다._"] : []),
   ].join("\n");
 
-  const response = await fetch(WEBHOOK_URL, {
+  return { username: "멀티캠퍼스 점심봇", text: message };
+}
+
+async function sendToMattermost(payload, webhookUrl, fetchImpl = fetch) {
+  if (!webhookUrl) {
+    throw new Error("MM_WEBHOOK_URL secret is not configured.");
+  }
+
+  const response = await fetchImpl(webhookUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      username: "멀티캠퍼스 점심봇",
-      text: message,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    const error = new Error(
-      `Mattermost webhook failed: ${response.status} ${response.statusText} ${body}`
-    );
-
+    const error = new Error(`Mattermost webhook failed: HTTP ${response.status}`);
     error.retryable = response.status === 429 || response.status >= 500;
     throw error;
   }
 }
 
-async function main() {
-  const date = getSeoulDate();
+async function main({
+  date = getSeoulDate(),
+  only10f = false,
+  dryRun = false,
+  test = false,
+  webhookUrl = process.env.MM_WEBHOOK_URL,
+  dataDir,
+  fetchImpl = fetch,
+} = {}) {
+  validateDate(date);
+  if (!dryRun && !webhookUrl) throw new Error("MM_WEBHOOK_URL secret is not configured.");
   console.log(`Fetching menu for ${date}`);
 
-  const data = await retry(
-    () => fetchMenu(date),
-    "Menu fetch"
-  );
-
-  if (!data?.meals?.length) {
-    console.log("Menu data is empty or missing. Skipping Mattermost post.");
-    return;
+  const results = await Promise.allSettled([
+    only10f ? Promise.resolve(null) : retry(() => fetchMenu(date, fetchImpl), "20F menu fetch"),
+    Promise.resolve().then(() => read10F(date, dataDir)),
+  ]);
+  const data = results.map((result, index) => {
+    if (result.status === "fulfilled") return result.value;
+    console.warn(`${index === 0 ? "20F" : "10F"} menu unavailable: ${result.reason.message}`);
+    return null;
+  });
+  const [data20f, data10f] = data;
+  if (!data20f?.meals?.length && !data10f?.meals?.length) {
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure) throw failure.reason;
+    console.log("Both floors have no menu or are closed. Skipping Mattermost post.");
+    return null;
   }
 
-  await retry(
-    () => sendToMattermost(data),
-    "Mattermost send"
-  );
+  const payload = buildPayload(date, data20f, data10f, { test });
+  if (dryRun) {
+    console.log(JSON.stringify(payload, null, 2));
+    return payload;
+  }
 
+  await retry(() => sendToMattermost(payload, webhookUrl, fetchImpl), "Mattermost send");
   console.log("Lunch menu sent to Mattermost.");
+  return payload;
 }
 
-main().catch((error) => {
-  console.error("Lunch bot failed after retries.");
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  Promise.resolve().then(() => {
+    const { values } = parseArgs({ options: {
+      date: { type: "string" },
+      "only-10f": { type: "boolean" },
+      "dry-run": { type: "boolean" },
+      test: { type: "boolean" },
+    } });
+    return main({ date: values.date, only10f: values["only-10f"], dryRun: values["dry-run"], test: values.test });
+  }).catch((error) => {
+    console.error(`Lunch bot failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { buildMenuTable, buildPayload, fetchMenu, format10F, getSeoulDate, main, sendToMattermost };
