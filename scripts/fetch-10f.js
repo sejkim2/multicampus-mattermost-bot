@@ -181,7 +181,7 @@ async function callGemini(imageBuffer, { referenceDate, model, apiKey, fetchImpl
     headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
       contents: [{ parts: [{ text: buildPrompt(referenceDate) }, { inlineData: { data: imageBuffer.toString("base64"), mimeType: imageMimeType(imageBuffer) } }] }],
-      generationConfig: { responseFormat: { text: { mimeType: "application/json", schema: WEEK_SCHEMA } } },
+      generationConfig: { responseFormat: { text: { mimeType: "APPLICATION_JSON", schema: WEEK_SCHEMA } } },
     }),
     signal: AbortSignal.timeout(90000),
   });

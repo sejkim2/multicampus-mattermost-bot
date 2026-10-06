@@ -87,7 +87,7 @@ test("Gemini 요청은 실제 이미지 MIME과 JSON 스키마를 사용하고 �
       assert.equal(options.headers["x-goog-api-key"], "test-key");
       const request = JSON.parse(options.body);
       assert.equal(request.contents[0].parts[1].inlineData.mimeType, "image/jpeg");
-      assert.equal(request.generationConfig.responseFormat.text.mimeType, "application/json");
+      assert.equal(request.generationConfig.responseFormat.text.mimeType, "APPLICATION_JSON");
       return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(parsed) }] } }] });
     },
   });

@@ -43,9 +43,11 @@
     }
   ],
   "source": {
-    "type": "manual",
-    "fileName": "10f-2026-10-05.json",
-    "sha256": "84206a988738900cc1af88d4368e9178a84b1f90532d850e6c49782f4d7c8303"
+    "type": "mattermost",
+    "fileId": "gkniey9i13r6tmpyawn51fsnay",
+    "fileName": "10층 공존식단_26년10월_2주차.png",
+    "postId": "ow14us5q1bdsjeyu5btnzqs9fw",
+    "sha256": "c8f5ed84100bb55165c46c1fc225b34691edfc8fd4b22d28d55babdcd2ac9692"
   },
-  "updatedAt": "2026-10-06T01:49:42.746Z"
+  "updatedAt": "2026-10-06T02:34:41.410Z"
 }
