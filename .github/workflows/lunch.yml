@@ -1,6 +1,9 @@
 name: Send Multicampus Lunch Menu
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: "5 9 * * *"
       timezone: "Asia/Seoul"
