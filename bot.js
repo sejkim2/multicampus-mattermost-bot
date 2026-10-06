@@ -24,6 +24,40 @@ function getKoreanWeekday(dateString) {
   }).format(date);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function retry(fn, label, maxAttempts = 3) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (error?.retryable === false) {
+        throw error;
+      }
+
+      if (attempt === maxAttempts) {
+        break;
+      }
+
+      const delayMs = attempt * 10000;
+      console.warn(
+        `${label} failed (attempt ${attempt}/${maxAttempts}). Retrying in ${delayMs / 1000}s...`
+      );
+      console.warn(error?.message ?? error);
+
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
+}
+
 async function fetchMenu(dateString) {
   const url =
     `https://raw.githubusercontent.com/C4T4767/baptimessafy/main/data/${dateString}.json`;
@@ -41,9 +75,12 @@ async function fetchMenu(dateString) {
   }
 
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       `Failed to fetch menu: ${response.status} ${response.statusText}`
     );
+
+    error.retryable = response.status === 429 || response.status >= 500;
+    throw error;
   }
 
   return response.json();
@@ -157,9 +194,12 @@ async function sendToMattermost(data) {
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(
+    const error = new Error(
       `Mattermost webhook failed: ${response.status} ${response.statusText} ${body}`
     );
+
+    error.retryable = response.status === 429 || response.status >= 500;
+    throw error;
   }
 }
 
@@ -167,18 +207,26 @@ async function main() {
   const date = getSeoulDate();
   console.log(`Fetching menu for ${date}`);
 
-  const data = await fetchMenu(date);
+  const data = await retry(
+    () => fetchMenu(date),
+    "Menu fetch"
+  );
 
   if (!data?.meals?.length) {
     console.log("Menu data is empty or missing. Skipping Mattermost post.");
     return;
   }
 
-  await sendToMattermost(data);
+  await retry(
+    () => sendToMattermost(data),
+    "Mattermost send"
+  );
+
   console.log("Lunch menu sent to Mattermost.");
 }
 
 main().catch((error) => {
+  console.error("Lunch bot failed after retries.");
   console.error(error);
   process.exit(1);
 });
