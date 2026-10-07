@@ -5,7 +5,6 @@
   "mealTime": "점심",
   "status": "open",
   "closureReason": "",
-  "notice": "공존 메뉴는 한정 수량으로 제공되어 조기 품절될 수 있으니 이용 시 참고 부탁드립니다.",
   "meals": [
     {
       "courseName": "도시락",

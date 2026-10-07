@@ -16,7 +16,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const WEEK_SCHEMA = {
   type: "object",
   properties: {
-    notice: { type: "string" },
     days: {
       type: "array", minItems: 5, maxItems: 5,
       items: {
@@ -35,7 +34,7 @@ const WEEK_SCHEMA = {
       },
     },
   },
-  required: ["notice", "days"],
+  required: ["days"],
 };
 
 function imageMimeType(buffer) {
@@ -171,7 +170,7 @@ function buildPrompt(referenceDate) {
 도시락, 브런치, 샐러드의 메뉴 이름을 그대로 추출하세요. 앞의 구분 기호 &는 메뉴 이름에서 제외하세요.
 공휴일, 행사, 미운영 안내는 메뉴가 아닙니다. 해당 날짜는 status=closed, closureReason=안내 사유, 세 종류의 메뉴 배열=[]로 반환하세요.
 운영일은 status=open, closureReason=""이며 보이지 않는 메뉴, 사진, 영양 수치를 만들지 마세요.
-하단 원산지·알레르기 설명을 메뉴에 포함하지 마세요. 공통 품절 안내는 notice에, 안내가 없으면 ""를 넣으세요.
+하단 원산지·알레르기 설명과 공통 품절 안내는 추출하지 마세요. 식단 안내 문구를 별도로 만들거나 반환하지 마세요.
 지정한 JSON 형식으로만 반환하세요.`;
 }
 

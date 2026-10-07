@@ -190,7 +190,6 @@ function format10F(data) {
   const lines = data.meals.map((meal) =>
     `**${labels[meal.courseName] ?? escapeCell(meal.courseName)}**\n${meal.items.map((item, index) => index === 0 ? `**${escapeCell(item)}**` : escapeCell(item)).join(" · ")}`
   );
-  if (data.notice) lines.push(`_${escapeCell(data.notice)}_`);
   return lines.join("\n\n");
 }
 

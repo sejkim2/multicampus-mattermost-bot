@@ -5,7 +5,6 @@
   "mealTime": "점심",
   "status": "open",
   "closureReason": "",
-  "notice": "",
   "meals": [
     {
       "courseName": "도시락",

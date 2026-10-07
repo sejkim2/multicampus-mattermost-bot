@@ -10,12 +10,12 @@ const data20f = { date: "2026-10-06", meals: [
   ] },
 ] };
 
-test("10층 세 코스와 품절 안내를 모두 표시하며 영양 수치를 만들지 않는다", () => {
-  const text = format10F(today10f);
+test("10층 세 코스를 표시하며 기존 품절 안내와 영양 수치는 표시하지 않는다", () => {
+  const text = format10F({ ...today10f, notice: "공존 메뉴는 조기 품절될 수 있습니다." });
   for (const meal of today10f.meals) for (const item of meal.items) assert.ok(text.includes(item));
   assert.match(text, /샌드위치/);
   assert.match(text, /샐러드/);
-  assert.match(text, /조기 품절/);
+  assert.doesNotMatch(text, /공존 메뉴는|조기 품절/);
   assert.doesNotMatch(text, /kcal|영양 정보|!\[/);
 });
 

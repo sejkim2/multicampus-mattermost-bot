@@ -51,6 +51,13 @@ test("미운영에 가짜 메뉴를 넣거나 메뉴 없는 날을 운영일로 
   assert.throws(() => normalizeWeek(empty), /운영일/);
 });
 
+test("안내 문구 없이 식단을 저장하고 이전 형식의 notice도 저장하지 않는다", () => {
+  const outputs = normalizeWeek(parsed);
+  assert.ok(outputs.every((day) => !Object.hasOwn(day, "notice")));
+  const legacyOutputs = normalizeWeek({ ...parsed, notice: "공존 메뉴는 조기 품절될 수 있습니다." });
+  assert.ok(legacyOutputs.every((day) => !Object.hasOwn(day, "notice")));
+});
+
 test("수동 JSON을 키 없이 저장하고 반복 가져오기는 파일을 변경하지 않는다", async (t) => {
   const dataDir = tempDirectory(t);
   const options = { jsonPath: examplePath, referenceDate: "2026-10-06", dataDir, env: {},
@@ -88,6 +95,9 @@ test("Gemini 요청은 실제 이미지 MIME과 JSON 스키마를 사용하고 �
       const request = JSON.parse(options.body);
       assert.equal(request.contents[0].parts[1].inlineData.mimeType, "image/jpeg");
       assert.equal(request.generationConfig.responseFormat.text.mimeType, "APPLICATION_JSON");
+      assert.equal(Object.hasOwn(request.generationConfig.responseFormat.text.schema.properties, "notice"), false);
+      assert.deepEqual(request.generationConfig.responseFormat.text.schema.required, ["days"]);
+      assert.doesNotMatch(request.contents[0].parts[0].text, /notice에/);
       return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(parsed) }] } }] });
     },
   });
@@ -96,7 +106,7 @@ test("Gemini 요청은 실제 이미지 MIME과 JSON 스키마를 사용하고 �
 
 test("Gemini JSON 응답이라도 날짜 검증에 실패하면 저장하지 않는다", async () => {
   await assert.rejects(callGemini(png, { referenceDate: "2026-10-06", model: "test-model", apiKey: "test-key",
-    fetchImpl: async () => Response.json({ candidates: [{ content: { parts: [{ text: '{"notice":"","days":[]}' }] } }] }),
+    fetchImpl: async () => Response.json({ candidates: [{ content: { parts: [{ text: '{"days":[]}' }] } }] }),
   }), /Gemini 식단 검증 실패/);
 });
 
