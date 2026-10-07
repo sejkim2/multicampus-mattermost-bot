@@ -57,6 +57,21 @@ test("20층 공개 JSON이 없더라도 10층 식단을 전송한다", async () 
   assert.match(payload.attachments[1].text, /마늘닭볶음탕/);
 });
 
+test("테스트와 정식 메시지는 같은 식단과 카드 형식을 사용한다", () => {
+  const date = "2026-10-07";
+  const data10f = read10F(date);
+  const production = buildPayload(date, { ...data20f, date }, data10f);
+  const preview = buildPayload(date, { ...data20f, date }, data10f, { test: true });
+  assert.deepEqual(production.attachments, preview.attachments);
+  assert.equal(production.username, preview.username);
+  assert.equal(
+    preview.text.replace("[테스트] ", "").replace("\n\n_식단 표시 확인을 위한 테스트 메시지입니다._", ""),
+    production.text
+  );
+  assert.match(production.attachments[1].text, /\*\*옛날돈까스\*\*/);
+  assert.doesNotMatch(production.text, /테스트/);
+});
+
 test("20층 조회의 영구 오류가 10층 발송을 막지 않는다", async () => {
   let sends = 0;
   await main({ date: "2026-10-06", webhookUrl: "https://example.test/hook",

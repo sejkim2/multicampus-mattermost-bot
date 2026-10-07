@@ -33,6 +33,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 발송 재실행에도 기본 브랜치의 최신 메시지 형식과 식단을 사용합니다.
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Record delivery version
+        run: |
+          revision=$(git rev-parse HEAD)
+          echo "Delivery revision: $revision"
+          echo "Delivery branch: ${{ github.event.repository.default_branch }}"
+          {
+            echo "### Lunch bot delivery version"
+            echo "- Branch: ${{ github.event.repository.default_branch }}"
+            echo "- Commit: $revision"
+            echo "- Trigger: ${{ github.event_name }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
