@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-20",
+  "dayOfWeek": "화요일",
+  "restaurant": "멀티캠퍼스 10층",
+  "mealTime": "점심",
+  "status": "open",
+  "closureReason": "",
+  "meals": [
+    {
+      "courseName": "도시락",
+      "setName": "10층 공존식단",
+      "name": "파채된장불고기, 치킨너겟, 백미밥, 얼큰김치콩나물국, 브로콜리두부무침, 깍두기",
+      "items": [
+        "파채된장불고기",
+        "치킨너겟",
+        "백미밥",
+        "얼큰김치콩나물국",
+        "브로콜리두부무침",
+        "깍두기"
+      ]
+    },
+    {
+      "courseName": "브런치",
+      "setName": "10층 공존식단",
+      "name": "돈까스샌드위치, 알리오올리오샐러드, 오리엔탈드레싱, 음료",
+      "items": [
+        "돈까스샌드위치",
+        "알리오올리오샐러드",
+        "오리엔탈드레싱",
+        "음료"
+      ]
+    },
+    {
+      "courseName": "샐러드",
+      "setName": "10층 공존식단",
+      "name": "바싹돈육보울, 오리엔탈드레싱, 음료",
+      "items": [
+        "바싹돈육보울",
+        "오리엔탈드레싱",
+        "음료"
+      ]
+    }
+  ],
+  "source": {
+    "type": "mattermost",
+    "fileId": "9k8psjazqfbkmx884bcutzjyow",
+    "fileName": "10층_공존식단_26년10월_4주차.png",
+    "postId": "r1mtjws1x78itdnuqn194tjwcy",
+    "sha256": "e02b3a3d0c42ea5228769e306121df7056e86c00483e29dbb3666e26e2aed7b7"
+  },
+  "updatedAt": "2026-10-20T00:25:51.679Z"
+}
