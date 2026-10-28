@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-27",
+  "dayOfWeek": "화요일",
+  "restaurant": "멀티캠퍼스 10층",
+  "mealTime": "점심",
+  "status": "open",
+  "closureReason": "",
+  "meals": [
+    {
+      "courseName": "도시락",
+      "setName": "10층 공존식단",
+      "name": "돼지갈비찜, 잡채어묵강정, 백미밥, 호박고기찌개, 콩나물무침, 포기김치",
+      "items": [
+        "돼지갈비찜",
+        "잡채어묵강정",
+        "백미밥",
+        "호박고기찌개",
+        "콩나물무침",
+        "포기김치"
+      ]
+    },
+    {
+      "courseName": "브런치",
+      "setName": "10층 공존식단",
+      "name": "햄계란샌드위치, 파스타샐러드, 흑임자참깨드레싱, 음료",
+      "items": [
+        "햄계란샌드위치",
+        "파스타샐러드",
+        "흑임자참깨드레싱",
+        "음료"
+      ]
+    },
+    {
+      "courseName": "샐러드",
+      "setName": "10층 공존식단",
+      "name": "치즈함박감자샐러드, 흑임자참깨드레싱, 음료",
+      "items": [
+        "치즈함박감자샐러드",
+        "흑임자참깨드레싱",
+        "음료"
+      ]
+    }
+  ],
+  "source": {
+    "type": "mattermost",
+    "fileId": "ses6xfe16in19dgnd3qws8t7ie",
+    "fileName": "10층_공존식단_26년10월_5주차.png",
+    "postId": "ts1szm3be7rd8kkfhii1fkrbbc",
+    "sha256": "6e79976047de46fa98518779b3833521d0dc3ad5cec6a81fba7e8e724d822a8b"
+  },
+  "updatedAt": "2026-10-28T04:48:30.270Z"
+}
