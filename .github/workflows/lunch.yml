@@ -1,4 +1,9 @@
 name: Send Multicampus Lunch Menu
+# 실제로 발송한 수동 실행은 이름에 [발송 날짜]를 붙입니다. 예약 실행의 중복 확인이 이 표시를 보고 건너뜁니다.
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run && !inputs.test_message
+  && format('Send Multicampus Lunch Menu [발송 {0}]', inputs.date || '오늘')
+  || 'Send Multicampus Lunch Menu' }}
 
 on:
   # GitHub의 schedule 이벤트는 혼잡 시 몇 시간씩 늦게 시작됩니다(10~11월 실측 2~5시간).
@@ -50,15 +55,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 한국시간 오늘 00:00 이후 성공한 다른 예약 실행이 있으면 중복 발송하지 않습니다.
+          # 한국시간 오늘 00:00 이후 성공한 다른 예약 실행, 또는 오늘 날짜로 실제 발송한 수동 실행이 있으면 중복 발송하지 않습니다.
           # 예약 실행은 concurrency로 하나씩만 돌기 때문에, 앞선 실행이 보낸 뒤에 이 확인이 실행됩니다.
           # 조회에 실패하면 누락보다 중복이 낫다고 보고 발송을 진행합니다.
-          since=$(date -u -d "$(date -u -d "+9 hours" +%F)T00:00:00+09:00" +%Y-%m-%dT%H:%M:%SZ)
+          today=$(date -u -d "+9 hours" +%F)
+          since=$(date -u -d "${today}T00:00:00+09:00" +%Y-%m-%dT%H:%M:%SZ)
           sent=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/lunch.yml/runs" \
             -f status=success -f created=">=$since" -f per_page=100 \
-            --jq "[.workflow_runs[] | select(.event == \"schedule\") | select(.id != $GITHUB_RUN_ID)] | length" \
+            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)
+              | select(.event == \"schedule\" or (.event == \"workflow_dispatch\"
+                  and ((.display_title | contains(\"[발송 오늘]\")) or (.display_title | contains(\"[발송 $today]\")))))] | length" \
             || echo 0)
-          echo "Automatic runs already succeeded since $since: $sent"
+          echo "Runs that already sent today ($today): $sent"
           if [ "$sent" -gt 0 ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "### 오늘 식단은 이미 발송되어 이번 ${GITHUB_EVENT_NAME} 실행은 건너뜁니다." >> "$GITHUB_STEP_SUMMARY"
