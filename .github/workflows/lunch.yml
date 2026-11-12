@@ -1,8 +1,18 @@
 name: Send Multicampus Lunch Menu
 
 on:
+  # GitHub의 schedule 이벤트는 혼잡 시 몇 시간씩 늦게 시작됩니다(10~11월 실측 2~5시간).
+  # 그래서 9시보다 일찍 여러 번 예약해 두고, 9시 전에 시작된 실행은 9시까지 기다렸다가 보냅니다.
+  # 9시가 지나 시작되면 바로 보내고, 같은 날 이미 보낸 실행이 있으면 건너뜁니다.
+  # 혼잡한 정각(특히 09:00 KST = UTC 자정)을 피해 분을 어긋나게 잡았습니다.
   schedule:
-    - cron: "0 9 * * 1-5"
+    - cron: "13 5 * * 1-5"
+      timezone: "Asia/Seoul"
+    - cron: "41 6 * * 1-5"
+      timezone: "Asia/Seoul"
+    - cron: "7 8 * * 1-5"
+      timezone: "Asia/Seoul"
+    - cron: "23 9 * * 1-5"
       timezone: "Asia/Seoul"
   workflow_dispatch:
     inputs:
@@ -20,24 +30,61 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: lunch-menu-${{ github.ref }}
+  # 예약 실행끼리만 한 줄로 세웁니다. 9시까지 대기 중인 예약 실행이 수동 실행을 막지 않게 이벤트별로 나눕니다.
+  group: lunch-menu-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   send-lunch-menu:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 05:13 실행이 제시간에 시작되면 9시까지 약 4시간 대기합니다.
+    timeout-minutes: 300
 
     steps:
+      - name: Skip if already sent today
+        id: guard
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 한국시간 오늘 00:00 이후 성공한 다른 예약 실행이 있으면 중복 발송하지 않습니다.
+          # 예약 실행은 concurrency로 하나씩만 돌기 때문에, 앞선 실행이 보낸 뒤에 이 확인이 실행됩니다.
+          # 조회에 실패하면 누락보다 중복이 낫다고 보고 발송을 진행합니다.
+          since=$(date -u -d "$(date -u -d "+9 hours" +%F)T00:00:00+09:00" +%Y-%m-%dT%H:%M:%SZ)
+          sent=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/lunch.yml/runs" \
+            -f status=success -f created=">=$since" -f per_page=100 \
+            --jq "[.workflow_runs[] | select(.event == \"schedule\") | select(.id != $GITHUB_RUN_ID)] | length" \
+            || echo 0)
+          echo "Automatic runs already succeeded since $since: $sent"
+          if [ "$sent" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "### 오늘 식단은 이미 발송되어 이번 ${GITHUB_EVENT_NAME} 실행은 건너뜁니다." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Wait until 09:00 KST
+        if: github.event_name == 'schedule' && steps.guard.outputs.skip != 'true'
+        run: |
+          target=$(date -d "$(date -u -d "+9 hours" +%F)T09:00:00+09:00" +%s)
+          wait=$(( target - $(date +%s) ))
+          if [ "$wait" -gt 0 ]; then
+            echo "09:00 KST까지 ${wait}초 대기합니다."
+            sleep "$wait"
+          else
+            echo "이미 09:00 KST가 지나 바로 발송합니다."
+          fi
+
       - name: Checkout
+        if: steps.guard.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
           # 발송 재실행에도 기본 브랜치의 최신 메시지 형식과 식단을 사용합니다.
           ref: ${{ github.event.repository.default_branch }}
 
       - name: Record delivery version
+        if: steps.guard.outputs.skip != 'true'
         run: |
           revision=$(git rev-parse HEAD)
           echo "Delivery revision: $revision"
@@ -50,13 +97,16 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node.js
+        if: steps.guard.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Send lunch menu to Mattermost
+        if: steps.guard.outputs.skip != 'true'
         env:
           MM_WEBHOOK_URL: ${{ secrets.MM_WEBHOOK_URL }}
+          # schedule에는 inputs가 없으므로 오늘 날짜로 실제 발송합니다.
           MENU_DATE: ${{ inputs.date }}
           DRY_RUN: ${{ inputs.dry_run }}
           TEST_MESSAGE: ${{ inputs.test_message }}
