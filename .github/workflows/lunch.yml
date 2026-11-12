@@ -49,37 +49,40 @@ jobs:
     timeout-minutes: 300
 
     steps:
-      - name: Skip if already sent today
+      - name: Skip if already sent today, wait until 09:00 KST
         id: guard
         if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # 한국시간 오늘 00:00 이후 성공한 다른 예약 실행, 또는 오늘 날짜로 실제 발송한 수동 실행이 있으면 중복 발송하지 않습니다.
-          # 예약 실행은 concurrency로 하나씩만 돌기 때문에, 앞선 실행이 보낸 뒤에 이 확인이 실행됩니다.
+          # 9시까지 기다리는 동안 수동으로 먼저 보냈을 수 있으므로, 대기 전과 대기 후에 한 번씩 확인합니다.
           # 조회에 실패하면 누락보다 중복이 낫다고 보고 발송을 진행합니다.
           today=$(date -u -d "+9 hours" +%F)
           since=$(date -u -d "${today}T00:00:00+09:00" +%Y-%m-%dT%H:%M:%SZ)
-          sent=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/lunch.yml/runs" \
-            -f status=success -f created=">=$since" -f per_page=100 \
-            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)
-              | select(.event == \"schedule\" or (.event == \"workflow_dispatch\"
-                  and ((.display_title | contains(\"[발송 오늘]\")) or (.display_title | contains(\"[발송 $today]\")))))] | length" \
-            || echo 0)
-          echo "Runs that already sent today ($today): $sent"
-          if [ "$sent" -gt 0 ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "### 오늘 식단은 이미 발송되어 이번 ${GITHUB_EVENT_NAME} 실행은 건너뜁니다." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          skip_if_sent() {
+            sent=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/lunch.yml/runs" \
+              -f status=success -f created=">=$since" -f per_page=100 \
+              --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)
+                | select(.event == \"schedule\" or (.event == \"workflow_dispatch\"
+                    and ((.display_title | contains(\"[발송 오늘]\")) or (.display_title | contains(\"[발송 $today]\")))))] | length" \
+              || echo 0)
+            echo "Runs that already sent today ($today): $sent"
+            if [ "$sent" -gt 0 ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "### 오늘 식단은 이미 발송되어 이번 ${GITHUB_EVENT_NAME} 실행은 건너뜁니다." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          }
 
-      - name: Wait until 09:00 KST
-        if: github.event_name == 'schedule' && steps.guard.outputs.skip != 'true'
-        run: |
-          target=$(date -d "$(date -u -d "+9 hours" +%F)T09:00:00+09:00" +%s)
+          skip_if_sent
+
+          target=$(date -d "${today}T09:00:00+09:00" +%s)
           wait=$(( target - $(date +%s) ))
           if [ "$wait" -gt 0 ]; then
             echo "09:00 KST까지 ${wait}초 대기합니다."
             sleep "$wait"
+            skip_if_sent
           else
             echo "이미 09:00 KST가 지나 바로 발송합니다."
           fi
