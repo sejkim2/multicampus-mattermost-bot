@@ -1,14 +1,9 @@
 name: Send Multicampus Lunch Menu
-# 실제로 발송한 수동 실행은 이름에 [발송 날짜]를 붙입니다. 예약 실행의 중복 확인이 이 표시를 보고 건너뜁니다.
-run-name: >-
-  ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run && !inputs.test_message
-  && format('Send Multicampus Lunch Menu [발송 {0}]', inputs.date || '오늘')
-  || 'Send Multicampus Lunch Menu' }}
 
 on:
   # GitHub의 schedule 이벤트는 혼잡 시 몇 시간씩 늦게 시작됩니다(10~11월 실측 2~5시간).
   # 그래서 9시보다 일찍 여러 번 예약해 두고, 9시 전에 시작된 실행은 9시까지 기다렸다가 보냅니다.
-  # 9시가 지나 시작되면 바로 보내고, 같은 날 이미 보낸 실행이 있으면 건너뜁니다.
+  # 9시가 지나 시작되면 바로 보내고, 같은 날 이미 보냈으면 건너뜁니다.
   # 혼잡한 정각(특히 09:00 KST = UTC 자정)을 피해 분을 어긋나게 잡았습니다.
   schedule:
     - cron: "13 5 * * 1-5"
@@ -32,13 +27,18 @@ on:
         description: "메시지에 테스트 표시"
         type: boolean
         default: true
+      force_send:
+        description: "이미 보낸 날이어도 다시 발송 (중복 발송됨)"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
-  actions: read
+  # 날짜별 발송 기록 태그(lunch-sent/YYYY-MM-DD)를 만들고 지우는 데 필요합니다.
+  contents: write
 
 concurrency:
   # 예약 실행끼리만 한 줄로 세웁니다. 9시까지 대기 중인 예약 실행이 수동 실행을 막지 않게 이벤트별로 나눕니다.
+  # 실제 중복 방지는 bot.js의 발송 기록 태그 선점이 담당하므로, 그룹이 달라 동시에 돌아도 한 번만 발송합니다.
   group: lunch-menu-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
@@ -55,24 +55,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 한국시간 오늘 00:00 이후 성공한 다른 예약 실행, 또는 오늘 날짜로 실제 발송한 수동 실행이 있으면 중복 발송하지 않습니다.
-          # 9시까지 기다리는 동안 수동으로 먼저 보냈을 수 있으므로, 대기 전과 대기 후에 한 번씩 확인합니다.
-          # 조회에 실패하면 누락보다 중복이 낫다고 보고 발송을 진행합니다.
+          # 오늘 발송 기록 태그가 이미 있으면 기다리지 않고 끝냅니다. 대기 중에 수동으로 먼저 보냈을 수 있으므로 대기 후에 한 번 더 봅니다.
+          # 이 단계는 불필요한 대기를 줄이는 사전 확인일 뿐입니다. 조회에 실패해도 진행하고, 최종 판단은 bot.js의 태그 선점이 합니다.
           today=$(date -u -d "+9 hours" +%F)
-          since=$(date -u -d "${today}T00:00:00+09:00" +%Y-%m-%dT%H:%M:%SZ)
           skip_if_sent() {
-            sent=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/lunch.yml/runs" \
-              -f status=success -f created=">=$since" -f per_page=100 \
-              --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)
-                | select(.event == \"schedule\" or (.event == \"workflow_dispatch\"
-                    and ((.display_title | contains(\"[발송 오늘]\")) or (.display_title | contains(\"[발송 $today]\")))))] | length" \
-              || echo 0)
-            echo "Runs that already sent today ($today): $sent"
-            if [ "$sent" -gt 0 ]; then
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/lunch-sent/$today" --silent 2>/dev/null; then
+              echo "lunch-sent/$today 태그가 있어 이번 실행은 건너뜁니다."
               echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "### 오늘 식단은 이미 발송되어 이번 ${GITHUB_EVENT_NAME} 실행은 건너뜁니다." >> "$GITHUB_STEP_SUMMARY"
+              echo "### 오늘($today) 식단은 이미 발송되어 이번 실행은 건너뜁니다." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
+            echo "lunch-sent/$today 태그가 없거나 확인하지 못했습니다."
           }
 
           skip_if_sent
@@ -117,13 +110,17 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         env:
           MM_WEBHOOK_URL: ${{ secrets.MM_WEBHOOK_URL }}
+          # bot.js가 발송 직전에 lunch-sent/날짜 태그를 만들어 하루 한 번만 보냅니다.
+          GITHUB_TOKEN: ${{ github.token }}
           # schedule에는 inputs가 없으므로 오늘 날짜로 실제 발송합니다.
           MENU_DATE: ${{ inputs.date }}
           DRY_RUN: ${{ inputs.dry_run }}
           TEST_MESSAGE: ${{ inputs.test_message }}
+          FORCE_SEND: ${{ inputs.force_send }}
         run: |
           args=()
           if [ -n "$MENU_DATE" ]; then args+=(--date "$MENU_DATE"); fi
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           if [ "$TEST_MESSAGE" = "true" ]; then args+=(--test); fi
+          if [ "$FORCE_SEND" = "true" ]; then args+=(--force); fi
           node bot.js "${args[@]}"

@@ -1,16 +1,17 @@
 const { parseArgs } = require("node:util");
 const { read10F, validateDate } = require("./lib/menu-10f");
+const { createSendLockFromEnv } = require("./lib/send-lock");
 require("./lib/env").loadLocalEnv();
 
 const SEOUL_TZ = "Asia/Seoul";
 
-function getSeoulDate() {
+function getSeoulDate(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: SEOUL_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(now);
 }
 
 function getKoreanWeekday(dateString) {
@@ -25,7 +26,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function retry(fn, label, maxAttempts = 3) {
+async function retry(fn, label, maxAttempts = 3, baseDelayMs = 10000) {
   let lastError;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -42,7 +43,7 @@ async function retry(fn, label, maxAttempts = 3) {
         break;
       }
 
-      const delayMs = attempt * 10000;
+      const delayMs = attempt * baseDelayMs;
       console.warn(
         `${label} failed (attempt ${attempt}/${maxAttempts}). Retrying in ${delayMs / 1000}s...`
       );
@@ -228,12 +229,27 @@ async function sendToMattermost(payload, webhookUrl, fetchImpl = fetch) {
     throw new Error("MM_WEBHOOK_URL secret is not configured.");
   }
 
-  const response = await fetchImpl(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(15000),
-  });
+  let response;
+  try {
+    response = await fetchImpl(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (cause) {
+    // 응답 시간 초과는 Mattermost가 이미 게시했을 수도 있으므로 재전송하지 않습니다.
+    if (cause?.name === "TimeoutError" || cause?.name === "AbortError") {
+      const error = new Error("Mattermost webhook timed out; the message may or may not have been posted.");
+      error.retryable = false;
+      error.uncertain = true;
+      throw error;
+    }
+    // 연결 자체가 안 된 오류(DNS, 연결 거부 등)는 전달되지 않았으므로 다시 시도합니다.
+    const error = new Error(`Mattermost webhook request failed: ${cause?.message ?? cause}`);
+    error.retryable = true;
+    throw error;
+  }
 
   if (!response.ok) {
     const error = new Error(`Mattermost webhook failed: HTTP ${response.status}`);
@@ -250,6 +266,8 @@ async function main({
   webhookUrl = process.env.MM_WEBHOOK_URL,
   dataDir,
   fetchImpl = fetch,
+  lock = null,
+  retryBaseDelayMs = 10000,
 } = {}) {
   validateDate(date);
   if (!dryRun && !webhookUrl) throw new Error("MM_WEBHOOK_URL secret is not configured.");
@@ -278,7 +296,32 @@ async function main({
     return payload;
   }
 
-  await retry(() => sendToMattermost(payload, webhookUrl, fetchImpl), "Mattermost send");
+  if (lock) {
+    // 보내기 전에 오늘 발송권을 원자적으로 선점합니다. 선점 여부를 판단할 수 없으면 보내지 않습니다.
+    const claimed = await lock.claim(date);
+    if (!claimed) {
+      console.log(`${date} lunch menu was already sent (${lock.describe(date)}). Skipping Mattermost post.`);
+      return null;
+    }
+    console.log(`Claimed ${lock.describe(date)}.`);
+  }
+
+  try {
+    await retry(() => sendToMattermost(payload, webhookUrl, fetchImpl), "Mattermost send", 3, retryBaseDelayMs);
+  } catch (error) {
+    if (lock && !error.uncertain) {
+      // 확실히 전달되지 않았으면 기록을 지워 다음 예약 실행이 다시 보낼 수 있게 합니다.
+      try {
+        await lock.release(date);
+        console.warn(`Released ${lock.describe(date)} so a later run can retry.`);
+      } catch (releaseError) {
+        console.warn(`Could not release ${lock.describe(date)}: ${releaseError.message}. Delete the tag to allow a retry.`);
+      }
+    } else if (lock) {
+      console.warn(`Keeping ${lock.describe(date)} because the message may already be posted. Check Mattermost; delete the tag to allow a resend.`);
+    }
+    throw error;
+  }
   console.log("Lunch menu sent to Mattermost.");
   return payload;
 }
@@ -290,8 +333,13 @@ if (require.main === module) {
       "only-10f": { type: "boolean" },
       "dry-run": { type: "boolean" },
       test: { type: "boolean" },
+      force: { type: "boolean" },
     } });
-    return main({ date: values.date, only10f: values["only-10f"], dryRun: values["dry-run"], test: values.test });
+    const options = { dryRun: values["dry-run"], test: values.test, force: values.force };
+    const { lock, refusal } = createSendLockFromEnv(process.env, options);
+    if (refusal) throw new Error(refusal);
+    if (values.force) console.warn("Force send: skipping the daily send record.");
+    return main({ date: values.date, only10f: values["only-10f"], dryRun: options.dryRun, test: options.test, lock });
   }).catch((error) => {
     console.error(`Lunch bot failed: ${error.message}`);
     process.exitCode = 1;
