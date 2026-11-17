@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-20",
+  "dayOfWeek": "금요일",
+  "restaurant": "멀티캠퍼스 10층",
+  "mealTime": "점심",
+  "status": "closed",
+  "closureReason": "미운영",
+  "meals": [],
+  "source": {
+    "type": "mattermost",
+    "fileId": "zk5jbbw1uint5pp88wgjw8f1my",
+    "fileName": "10층_공존식단_26년11월_3주차.png",
+    "postId": "soqkygrynibeic6cd9ysbfqo4e",
+    "sha256": "f505fba50bb5c0e9990dd36defbc3940dfb873fffd4ca1c813ca5f4ff395f430"
+  },
+  "updatedAt": "2026-11-17T03:33:22.320Z"
+}
