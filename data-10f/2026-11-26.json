@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-26",
+  "dayOfWeek": "목요일",
+  "restaurant": "멀티캠퍼스 10층",
+  "mealTime": "점심",
+  "status": "open",
+  "closureReason": "",
+  "meals": [
+    {
+      "courseName": "도시락",
+      "setName": "10층 공존식단",
+      "name": "제육불고기덮밥, 한입떡갈비구이, 감자채볶음, 옹심이만둣국, 고구마샐러드, 깍두기",
+      "items": [
+        "제육불고기덮밥",
+        "한입떡갈비구이",
+        "감자채볶음",
+        "옹심이만둣국",
+        "고구마샐러드",
+        "깍두기"
+      ]
+    },
+    {
+      "courseName": "브런치",
+      "setName": "10층 공존식단",
+      "name": "햄계란샌드위치, 두부구이샐러드, 오리엔탈드레싱, 음료",
+      "items": [
+        "햄계란샌드위치",
+        "두부구이샐러드",
+        "오리엔탈드레싱",
+        "음료"
+      ]
+    },
+    {
+      "courseName": "샐러드",
+      "setName": "10층 공존식단",
+      "name": "미트소스파스타샐러드, 오리엔탈드레싱, 음료",
+      "items": [
+        "미트소스파스타샐러드",
+        "오리엔탈드레싱",
+        "음료"
+      ]
+    }
+  ],
+  "source": {
+    "type": "mattermost",
+    "fileId": "fqyqghi15bb1pg46ajcbeshzuy",
+    "fileName": "10층_26년11월_4주차 식단.png",
+    "postId": "pmc4epq9fbbz9b6sfe3b3skogw",
+    "sha256": "2e5415d62dbb96f5ae6cf3470b778c3f66aee3ee2e24be2cde1f5a1386609e5a"
+  },
+  "updatedAt": "2026-11-26T03:26:08.745Z"
+}
